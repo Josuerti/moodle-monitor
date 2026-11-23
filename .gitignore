@@ -1,2 +1,9 @@
 node_modules/
 .env
+.env.*
+data/
+state.json
+state.json.*
+moodle-state.json
+moodle-state.json.*
+*.tmp
