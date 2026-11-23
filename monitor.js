@@ -72,7 +72,17 @@ const saveState = (s) => fs.writeFileSync(STATE_FILE, JSON.stringify(s, null, 1)
 
 /* ---------------- Moodle ---------------- */
 async function getToken() {
-  if (process.env.MOODLE_TOKEN) return process.env.MOODLE_TOKEN.trim();
+  if (process.env.MOODLE_TOKEN) {
+    // Acepta el token (32 caracteres) o el texto "moodlemobile://token=BASE64" copiado del navegador
+    let t = process.env.MOODLE_TOKEN.trim();
+    const m = t.match(/token=([A-Za-z0-9+/=_-]+)/);
+    if (m) t = m[1];
+    if (!/^[0-9a-f]{32}$/i.test(t)) {
+      const dec = Buffer.from(t, 'base64').toString('utf8');
+      if (dec.includes(':::')) t = dec.split(':::')[1];
+    }
+    return t;
+  }
   const username = process.env.MOODLE_USER, password = process.env.MOODLE_PASS;
   if (!username || !password) throw new Error('Falta MOODLE_TOKEN (o MOODLE_USER y MOODLE_PASS).');
   const res = await fetch(`${MOODLE_URL}/login/token.php`, {
