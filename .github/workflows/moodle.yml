@@ -2,7 +2,7 @@ name: Monitor Moodle
 
 on:
   schedule:
-    - cron: "7 * * * *"   # cada hora (minuto 7)
+    - cron: "*/5 * * * *" # cada 5 min: responde comandos; la revisión completa es cada hora
   workflow_dispatch:       # botón para correrlo a mano
 
 permissions:
@@ -31,6 +31,7 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           DIGEST_HOUR: "7"
+          FORCE_CHECK: ${{ github.event_name == 'workflow_dispatch' && '1' || '0' }}
 
       - name: Guardar estado
         if: always()

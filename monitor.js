@@ -110,6 +110,7 @@ async function getEvents(token) {
 
   return [...map.values()].map((e) => ({
     id: String(e.id),
+    courseid: e.course?.id,
     name: e.activityname || e.name,
     course: e.course?.fullname || e.course?.shortname || '',
     ts: e.timesort || e.timestart,
@@ -243,6 +244,7 @@ async function runOnce() {
   if (avisos.length) await tg(avisos.join('\n\n'));
 
   state.initialized = true;
+  state.lastCheck = Date.now();
   saveState(state);
   console.log(`OK ${new Date().toISOString()} — ${events.length} eventos, ${courses.length} cursos, ${avisos.length} avisos`);
 }
@@ -260,9 +262,106 @@ async function safeRun() {
   }
 }
 
+/* ---------------- comandos del bot ---------------- */
+const COMANDOS = [
+  { command: 'pendientes', description: 'Todo lo que tienes por entregar' },
+  { command: 'hoy', description: 'Lo que vence hoy' },
+  { command: 'semana', description: 'Lo que vence en los próximos 7 días' },
+  { command: 'materia', description: 'Pendientes de una materia: /materia calculo' },
+  { command: 'cursos', description: 'Tus materias y cuántos pendientes tienen' },
+  { command: 'ayuda', description: 'Ver los comandos' },
+];
+const AYUDA = '🤖 <b>Comandos</b>\n' + COMANDOS.map((c) => `/${c.command} — ${esc(c.description)}`).join('\n') +
+  '\n\nTambién puedes escribir solo el nombre de una materia (ej: <i>calculo</i>).\n' +
+  '<i>Respondo en unos minutos: reviso los mensajes cada 5 min.</i>';
+const norm = (s) => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+
+async function tgApi(method, params = {}) {
+  const res = await fetch(`https://api.telegram.org/bot${TG_TOKEN}/${method}`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(params),
+  });
+  const d = await res.json();
+  if (!d.ok) throw new Error(`Telegram ${method}: ${d.description}`);
+  return d.result;
+}
+
+async function loadCtx() {
+  const token = await getToken();
+  const info = await ws(token, 'core_webservice_get_site_info');
+  const [events, courses] = await Promise.all([
+    getEvents(token), ws(token, 'core_enrol_get_users_courses', { userid: info.userid }),
+  ]);
+  return { events, courses: courses.filter((c) => c.visible !== 0) };
+}
+
+const lista = (titulo, evs, vacio = 'Nada pendiente. 🎉') =>
+  `${titulo}\n` + (evs.length ? evs.map(line).join('\n') : vacio);
+
+function responder(texto, ctx) {
+  const t = texto.trim();
+  let [cmd, ...resto] = t.split(/\s+/);
+  cmd = cmd.toLowerCase().replace(/@\w+$/, '');
+  let arg = resto.join(' ');
+  if (!cmd.startsWith('/')) { cmd = '/materia'; arg = t; }
+
+  const now = Date.now() / 1000;
+  const finDia = Date.parse(`${todayStr()}T23:59:59-05:00`) / 1000; // Ecuador: UTC-5 sin horario de verano
+  const pend = ctx.events.filter((e) => e.ts >= now || e.actionable).sort((a, b) => a.ts - b.ts);
+  const deCurso = (c) => pend.filter((e) => e.courseid === c.id || (!e.courseid && e.course === c.fullname));
+  const cursos = () => ctx.courses.map((c) => `• ${esc(c.fullname)} (${deCurso(c).length})`).join('\n');
+
+  switch (cmd) {
+    case '/start': case '/ayuda': case '/help': return AYUDA;
+    case '/pendientes': return lista('📋 <b>Pendientes</b>', pend);
+    case '/hoy': return lista('📅 <b>Vence hoy</b>', pend.filter((e) => e.ts <= finDia), 'Nada vence hoy. 🎉');
+    case '/semana': return lista('🗓 <b>Próximos 7 días</b>', pend.filter((e) => e.ts <= now + 7 * 86400), 'Nada vence esta semana. 🎉');
+    case '/cursos': return `📚 <b>Tus materias</b> (pendientes)\n${cursos()}`;
+    case '/materia': {
+      if (!arg) return `Escribe el nombre, por ejemplo: /materia calculo\n\n📚 <b>Tus materias</b>\n${cursos()}`;
+      const palabras = norm(arg).split(/\s+/);
+      const hits = ctx.courses.filter((c) => {
+        const n = norm(`${c.fullname} ${c.shortname}`);
+        return palabras.every((p) => n.includes(p));
+      });
+      if (!hits.length) return `No encontré una materia con "<b>${esc(arg)}</b>".\n\n📚 <b>Tus materias</b>\n${cursos()}`;
+      return hits.map((c) => lista(`📘 <b>${esc(c.fullname)}</b>\n<a href="${MOODLE_URL}/course/view.php?id=${c.id}">Abrir curso</a>`,
+        deCurso(c), 'Sin pendientes en esta materia. 🎉')).join('\n\n');
+    }
+    default: return `No conozco ese comando.\n\n${AYUDA}`;
+  }
+}
+
+async function checkCommands() {
+  if (!TG_TOKEN || !TG_CHAT) return;
+  const state = loadState();
+  if (!state.commandsSet) {
+    await tgApi('setMyCommands', { commands: COMANDOS });
+    state.commandsSet = true; saveState(state);
+  }
+  const updates = await tgApi('getUpdates', { timeout: 0, allowed_updates: ['message'] });
+  if (!updates.length) return;
+  // Confirmar primero, para no responder dos veces si algo falla
+  await tgApi('getUpdates', { offset: updates[updates.length - 1].update_id + 1, timeout: 0 });
+  const msgs = updates.map((u) => u.message)
+    .filter((m) => m && m.text && String(m.chat.id) === String(TG_CHAT) && Date.now() / 1000 - m.date < 6 * 3600);
+  let ctx = null;
+  for (const m of msgs) {
+    try { ctx ||= await loadCtx(); await tg(responder(m.text, ctx)); }
+    catch (err) { console.error(err); try { await tg(`⚠️ No pude responder: <code>${esc(err.message)}</code>`); } catch {} }
+  }
+  console.log(`Comandos respondidos: ${msgs.length}`);
+}
+
+async function main() {
+  try { await checkCommands(); } catch (err) { console.error(err); }
+  const state = loadState();
+  const everyMin = Number(process.env.CHECK_MIN || 55);
+  const due = !state.initialized || process.env.FORCE_CHECK === '1' || Date.now() - (state.lastCheck || 0) >= everyMin * 60e3;
+  return due ? safeRun() : true;
+}
+
 if (process.argv.includes('--loop')) {
-  const min = Number(process.env.INTERVAL_MIN || 30);
-  (async function tick() { await safeRun(); setTimeout(tick, min * 60e3); })();
+  (async function tick() { await main(); setTimeout(tick, 60e3); })();
 } else {
-  safeRun().then((ok) => process.exit(ok ? 0 : 1));
+  main().then((ok) => process.exit(ok ? 0 : 1));
 }

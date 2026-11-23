@@ -8,6 +8,20 @@ Revisa tu Moodle (`https://www217.ucsg.edu.ec`) cada hora y te avisa por Telegra
 - 🔔 Notificaciones de Moodle (calificaciones, foros, avisos)
 - 📋 Resumen diario a las 7:00 con todo lo pendiente
 
+## Preguntarle al bot
+Escríbele al bot en Telegram (responde en ~5–15 min, revisa los mensajes cada 5 min):
+
+| Comando | Qué hace |
+|---|---|
+| `/pendientes` | Todo lo que tienes por entregar |
+| `/hoy` | Lo que vence hoy |
+| `/semana` | Lo que vence en los próximos 7 días |
+| `/materia calculo` | Pendientes de esa materia (o escribe solo `calculo`) |
+| `/cursos` | Tus materias y cuántos pendientes tiene cada una |
+| `/ayuda` | Lista de comandos |
+
+Solo responde a tu chat (`TELEGRAM_CHAT_ID`); ignora a cualquier otra persona.
+
 ## 1. Crear el bot de Telegram
 1. En Telegram abre **@BotFather** → `/newbot` → ponle nombre. Copia el **token**.
 2. Abre tu bot nuevo y envíale `/start`.
@@ -44,5 +58,5 @@ Requiere Node 18 o superior.
 
 ## Ajustes
 - Hora del resumen: `DIGEST_HOUR` en el workflow.
-- Frecuencia: la línea `cron` del workflow (`"7 * * * *"` = cada hora).
+- Frecuencia: el workflow corre cada 5 min (`cron`) para responder comandos; la revisión completa de Moodle es cada 55 min (`CHECK_MIN`).
 - Recordatorios: arreglo `REMINDERS` en `monitor.js`.
