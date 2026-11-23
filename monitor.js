@@ -373,6 +373,13 @@ async function listen() {
   const everyMin = Number(process.env.CHECK_MIN || 55);
   let offset, retryAt = 0;
   console.log(`Escuchando Telegram; revisión de Moodle cada ${everyMin} min. Estado: ${STATE_FILE}`);
+  if (process.env.PORT) { // hosting tipo "sitio web" (alwaysdata, etc.): responde una página de estado
+    require('http').createServer((req, res) => {
+      const st = loadState();
+      res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
+      res.end(`Monitor de Moodle activo. Última revisión: ${st.lastCheck ? new Date(st.lastCheck).toISOString() : 'aún no'}\n`);
+    }).listen(Number(process.env.PORT), process.env.IP || '0.0.0.0');
+  }
   try { await setupCommands(); } catch (err) { console.error(err.message); }
   for (;;) {
     try {
