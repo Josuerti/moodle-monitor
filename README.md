@@ -52,7 +52,7 @@ Desde ahí corre solo cada hora. La primera ejecución solo registra lo que ya e
 ```bash
 # Windows (PowerShell)
 $env:MOODLE_TOKEN="..."; $env:TELEGRAM_BOT_TOKEN="..."; $env:TELEGRAM_CHAT_ID="..."
-node monitor.js --loop      # revisa cada 30 min (INTERVAL_MIN para cambiarlo)
+node monitor.js --loop      # responde comandos cada minuto y revisa Moodle cada 55 min (CHECK_MIN)
 ```
 Requiere Node 18 o superior.
 
