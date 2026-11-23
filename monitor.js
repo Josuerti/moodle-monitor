@@ -16,7 +16,7 @@ const TG_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const TG_CHAT = process.env.TELEGRAM_CHAT_ID;
 const DIGEST_HOUR = Number(process.env.DIGEST_HOUR || 7); // hora del resumen diario (Ecuador)
 const TZ = 'America/Guayaquil';
-const STATE_FILE = path.join(__dirname, 'state.json');
+const STATE_FILE = process.env.STATE_FILE || path.join(__dirname, 'state.json');
 
 // Recordatorios antes del vencimiento
 const REMINDERS = [
@@ -331,17 +331,24 @@ function responder(texto, ctx) {
   }
 }
 
+async function setupCommands() {
+  const state = loadState();
+  if (state.commandsSet) return;
+  await tgApi('setMyCommands', { commands: COMANDOS });
+  state.commandsSet = true; saveState(state);
+}
+
 async function checkCommands() {
   if (!TG_TOKEN || !TG_CHAT) return;
-  const state = loadState();
-  if (!state.commandsSet) {
-    await tgApi('setMyCommands', { commands: COMANDOS });
-    state.commandsSet = true; saveState(state);
-  }
+  await setupCommands();
   const updates = await tgApi('getUpdates', { timeout: 0, allowed_updates: ['message'] });
   if (!updates.length) return;
   // Confirmar primero, para no responder dos veces si algo falla
   await tgApi('getUpdates', { offset: updates[updates.length - 1].update_id + 1, timeout: 0 });
+  await answerUpdates(updates);
+}
+
+async function answerUpdates(updates) {
   const msgs = updates.map((u) => u.message)
     .filter((m) => m && m.text && String(m.chat.id) === String(TG_CHAT) && Date.now() / 1000 - m.date < 6 * 3600);
   let ctx = null;
@@ -360,8 +367,30 @@ async function main() {
   return due ? safeRun() : true;
 }
 
-if (process.argv.includes('--loop')) {
-  (async function tick() { await main(); setTimeout(tick, 60e3); })();
+/* Modo servidor 24/7: escucha Telegram en vivo (long polling) y revisa Moodle cada CHECK_MIN minutos */
+async function listen() {
+  if (!TG_TOKEN || !TG_CHAT) throw new Error('Faltan TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID');
+  const everyMin = Number(process.env.CHECK_MIN || 55);
+  let offset, retryAt = 0;
+  console.log(`Escuchando Telegram; revisión de Moodle cada ${everyMin} min. Estado: ${STATE_FILE}`);
+  try { await setupCommands(); } catch (err) { console.error(err.message); }
+  for (;;) {
+    try {
+      const st = loadState();
+      if (Date.now() >= retryAt && (!st.initialized || Date.now() - (st.lastCheck || 0) >= everyMin * 60e3)) {
+        if (!(await safeRun())) retryAt = Date.now() + 10 * 60e3; // si falla, reintenta en 10 min
+      }
+      const updates = await tgApi('getUpdates', { timeout: 50, offset, allowed_updates: ['message'] });
+      if (updates.length) {
+        offset = updates[updates.length - 1].update_id + 1;
+        await answerUpdates(updates);
+      }
+    } catch (err) { console.error(new Date().toISOString(), err.message); await sleep(15000); }
+  }
+}
+
+if (process.argv.includes('--listen') || process.argv.includes('--loop')) {
+  listen();
 } else {
   main().then((ok) => process.exit(ok ? 0 : 1));
 }
