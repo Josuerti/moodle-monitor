@@ -8,8 +8,13 @@ Revisa tu Moodle (`https://www217.ucsg.edu.ec`) cada hora y te avisa por Telegra
 - 🔔 Notificaciones de Moodle (calificaciones, foros, avisos)
 - 📋 Resumen diario a las 7:00 con todo lo pendiente
 
+## Dónde corre
+El bot corre 24/7 en **alwaysdata** (cuenta `moodlealberto`, sitio Node.js `https://moodlealberto.alwaysdata.net`, *Idle time* = 0). Al arrancar, el sitio clona/actualiza este repo y ejecuta `node monitor.js --listen`. Los tokens están en *Web → Sites → Modificar → Environment*. Después de cambiar el código: `git push` y reiniciar el sitio en el panel.
+
+El workflow `despertar.yml` visita la página cada 30 min para que no se apague. `moodle.yml` quedó solo manual: no lo ejecutes mientras el sitio esté activo, porque responderían dos bots a la vez.
+
 ## Preguntarle al bot
-Escríbele al bot en Telegram (responde en ~5–15 min, revisa los mensajes cada 5 min):
+Escríbele al bot en Telegram (responde al instante):
 
 | Comando | Qué hace |
 |---|---|

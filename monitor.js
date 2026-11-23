@@ -282,8 +282,7 @@ const COMANDOS = [
   { command: 'ayuda', description: 'Ver los comandos' },
 ];
 const AYUDA = '🤖 <b>Comandos</b>\n' + COMANDOS.map((c) => `/${c.command} — ${esc(c.description)}`).join('\n') +
-  '\n\nTambién puedes escribir solo el nombre de una materia (ej: <i>calculo</i>).\n' +
-  '<i>Respondo en unos minutos: reviso los mensajes cada 5 min.</i>';
+  '\n\nTambién puedes escribir solo el nombre de una materia (ej: <i>calculo</i>).';
 const norm = (s) => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
 
 async function tgApi(method, params = {}) {
